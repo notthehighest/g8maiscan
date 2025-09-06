@@ -8,6 +8,6 @@ services:
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10.7
+        value: 3.10.12
       - key: PIP_UPGRADE
         value: true
