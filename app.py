@@ -10,7 +10,7 @@ import secrets
 import numpy as np
 from keras.preprocessing.image import load_img, img_to_array
 from keras.models import load_model
-from dotenv import load_dotenv  # ✅ load env variables
+from dotenv import load_dotenv
 
 # ---------------- LOAD ENV ----------------
 load_dotenv()
@@ -27,29 +27,95 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB
 
 # ---------------- FIREBASE SETUP ----------------
-firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS")
+def initialize_firebase():
+    """Initialize Firebase with flexible credential loading"""
+    try:
+        # Method 1: Try environment variables first (for Render/Production)
+        if all([
+            os.getenv("FIREBASE_TYPE"),
+            os.getenv("FIREBASE_PROJECT_ID"),
+            os.getenv("FIREBASE_PRIVATE_KEY_ID"),
+            os.getenv("FIREBASE_PRIVATE_KEY"),
+            os.getenv("FIREBASE_CLIENT_EMAIL"),
+            os.getenv("FIREBASE_CLIENT_ID")
+        ]):
+            print("🔄 Loading Firebase credentials from environment variables...")
+            firebase_credentials = {
+                "type": os.getenv("FIREBASE_TYPE"),
+                "project_id": os.getenv("FIREBASE_PROJECT_ID"),
+                "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID"),
+                "private_key": os.getenv("FIREBASE_PRIVATE_KEY").replace('\\n', '\n'),
+                "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
+                "client_id": os.getenv("FIREBASE_CLIENT_ID"),
+                "auth_uri": os.getenv("FIREBASE_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
+                "token_uri": os.getenv("FIREBASE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
+                "auth_provider_x509_cert_url": os.getenv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
+                "client_x509_cert_url": os.getenv("FIREBASE_CLIENT_X509_CERT_URL"),
+                "universe_domain": "googleapis.com"
+            }
+            cred = credentials.Certificate(firebase_credentials)
+            print("✅ Firebase credentials loaded from environment variables")
+            
+        # Method 2: Fall back to JSON file (for Local Development)
+        else:
+            print("🔄 Loading Firebase credentials from JSON file...")
+            firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS", "project-maiscan-firebase-adminsdk-fbsvc-8491da1d45.json")
+            
+            if not firebase_credentials_path or not os.path.exists(firebase_credentials_path):
+                raise FileNotFoundError(f"Firebase credentials file not found: {firebase_credentials_path}")
+            
+            cred = credentials.Certificate(firebase_credentials_path)
+            print(f"✅ Firebase credentials loaded from JSON file: {firebase_credentials_path}")
+        
+        # Initialize Firebase Admin SDK
+        firebase_admin.initialize_app(cred)
+        return firestore.client()
+        
+    except Exception as e:
+        print(f"❌ Firebase initialization error: {e}")
+        raise e
 
-if not firebase_credentials_path or not os.path.exists(firebase_credentials_path):
-    raise FileNotFoundError(f"Firebase credentials file not found: {firebase_credentials_path}")
+# Initialize Firebase
+db = initialize_firebase()
 
-cred = credentials.Certificate(firebase_credentials_path)
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+# ---------------- PYREBASE SETUP ----------------
+def initialize_pyrebase():
+    """Initialize Pyrebase for client-side Firebase operations"""
+    try:
+        firebaseConfig = {
+            "apiKey": os.getenv("FIREBASE_API_KEY"),
+            "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
+            "databaseURL": os.getenv("FIREBASE_DATABASE_URL"),
+            "projectId": os.getenv("FIREBASE_PROJECT_ID"),
+            "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
+            "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"),
+            "appId": os.getenv("FIREBASE_APP_ID"),
+            "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID")
+        }
+        
+        # Validate required fields
+        required_fields = ["apiKey", "authDomain", "projectId"]
+        missing_fields = [field for field in required_fields if not firebaseConfig.get(field)]
+        
+        if missing_fields:
+            print(f"⚠️ Missing Pyrebase config fields: {missing_fields}")
+            return None
+        
+        pb = pyrebase.initialize_app(firebaseConfig)
+        pb_auth = pb.auth()
+        print("✅ Pyrebase initialized successfully")
+        return pb, pb_auth
+        
+    except Exception as e:
+        print(f"⚠️ Pyrebase initialization warning: {e}")
+        return None, None
 
-# Pyrebase config from env
-firebaseConfig = {
-    "apiKey": os.getenv("FIREBASE_API_KEY"),
-    "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
-    "databaseURL": os.getenv("FIREBASE_DATABASE_URL"),
-    "projectId": os.getenv("FIREBASE_PROJECT_ID"),
-    "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
-    "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"),
-    "appId": os.getenv("FIREBASE_APP_ID"),
-    "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID")
-}
-
-pb = pyrebase.initialize_app(firebaseConfig)
-pb_auth = pb.auth()
+# Initialize Pyrebase
+pb_result = initialize_pyrebase()
+if pb_result:
+    pb, pb_auth = pb_result
+else:
+    pb, pb_auth = None, None
 
 # ---------------- FLASK-LOGIN SETUP ----------------
 login_manager = LoginManager(app)
