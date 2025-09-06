@@ -10,4 +10,4 @@ keras==2.13.1
 Pillow==10.0.0
 gunicorn==21.2.0
 requests==2.31.0
-pycryptodome==3.19.0
+
